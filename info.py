@@ -1,6 +1,6 @@
 from os import environ, getenv
 from Script import script
-from memguard import limit_mb as _limit_mb
+from memguard import limit_mb as _limit_mb, cpu_limit as _cpu_limit
 
 
 # ───────────────────────── safe env helpers ─────────────────────────
@@ -105,6 +105,8 @@ NAME = environ.get('name', 'ProBotz')
 
 # ───────────────────── memory-aware defaults ─────────────────────
 MEMORY_LIMIT_MB = _limit_mb()          # None = unknown / unlimited
+CPU_LIMIT = _cpu_limit()               # vCPUs, None = unknown / unlimited
+SLOW_CPU = CPU_LIMIT is not None and CPU_LIMIT < 0.5   # e.g. Koyeb free = 0.1 vCPU
 
 
 def _auto(small, mid, big):
@@ -123,7 +125,7 @@ MAX_PARALLEL_CLIENTS = max(1, _env_int("MAX_PARALLEL_CLIENTS", 4))
 # Don't split tiny ranges across bots: every worker gets at least this many MB.
 MIN_PARTS_PER_WORKER = max(1, _env_int("MIN_PARTS_PER_WORKER", 4))
 # Hard cap on simultaneous open streams. Extra requests wait, then get 503.
-MAX_CONCURRENT_STREAMS = max(1, _env_int("MAX_CONCURRENT_STREAMS", _auto(12, 32, 100)))
+MAX_CONCURRENT_STREAMS = max(1, _env_int("MAX_CONCURRENT_STREAMS", 4 if SLOW_CPU else _auto(12, 32, 100)))
 # Per-IP cap, 0 = off. Keep it OFF behind Cloudflare/proxies: all users share the same IPs.
 MAX_STREAMS_PER_IP = max(0, _env_int("MAX_STREAMS_PER_IP", 0))   # 0 = off
 # How long an over-limit request waits for a free slot before a 503.
@@ -144,8 +146,8 @@ MIN_REQUESTS_PER_CLIENT = max(1, _env_int("MIN_REQUESTS_PER_CLIENT", 3))
 FLOOD_BUDGET = max(5, _env_int("FLOOD_BUDGET", 90))
 # Longest FloodWait we are willing to sit out inside a stream (seconds).
 MAX_FLOOD_SLEEP = max(1, _env_int("MAX_FLOOD_SLEEP", 20))
-# Max bot clients (main + MULTI_TOKEN*). Every logged-in bot costs RAM; 0 = no limit.
-MAX_CLIENTS = max(0, _env_int("MAX_CLIENTS", _auto(3, 5, 0)))
+# Max bot clients (main + MULTI_TOKEN*); 0 = use ALL tokens you add. Every bot costs some RAM.
+MAX_CLIENTS = max(0, _env_int("MAX_CLIENTS", 0))
 # Above this share of the memory limit new streams are refused with 503 (instead of an OOM kill).
 MEM_SHED_RATIO = max(0.5, min(0.98, _env_int("MEM_SHED_PERCENT", 85) / 100))
 # Cache of link-expiry setting / file records to spare MongoDB (seconds).
@@ -165,6 +167,8 @@ def _auto_cache_mb() -> int:
     try:
         free = shutil.disk_usage("/tmp").free / 1048576
     except Exception:
+        return 0
+    if SLOW_CPU:          # CPU is the scarce resource there; the cache would only add work
         return 0
     return int(min(free * 0.5, 4096)) if free >= 600 else 0
 

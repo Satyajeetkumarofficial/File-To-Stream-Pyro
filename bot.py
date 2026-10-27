@@ -142,7 +142,14 @@ async def start():
     Temp.ME = me.id
     Temp.U_NAME = me.username
     Temp.B_NAME = me.first_name
-    log.info("Bot @%s ready with %s bot client(s)", me.username, len(multi_clients))
+    log.info("Bot @%s ready with %s bot client(s) | RAM %.0f/%s MB | CPU limit %s vCPU | streams<=%s | cache %s MB",
+             me.username, len(multi_clients), memguard.rss_mb(),
+             int(MEMORY_LIMIT_MB) if MEMORY_LIMIT_MB else "?", CPU_LIMIT or "?",
+             MAX_CONCURRENT_STREAMS, DISK_CACHE_MB)
+    if SLOW_CPU:
+        log.warning("This instance has only %.2f vCPU. Decrypting/relaying Telegram data is CPU work, so total "
+                    "speed will stay low (about 5-10 MB/s) no matter how many bots you add. Use a bigger instance "
+                    "for more speed.", CPU_LIMIT)
 
     tasks = [asyncio.create_task(_supervise("premium-check", check_expired_premium, StreamBot)),
              asyncio.create_task(_supervise("memory-trim", memguard.trimmer))]

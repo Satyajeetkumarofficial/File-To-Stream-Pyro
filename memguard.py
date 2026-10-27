@@ -84,3 +84,53 @@ async def trimmer(interval: int = 20):
         after = rss_mb()
         if p > 0.8:
             log.warning("memory %.0f MB (%.0f%% of limit) - trimmed %.0f MB", after, 100 * p, before - after)
+
+
+# ───────────────────────── CPU limit / throttling ─────────────────────────
+def _parse_cpu_max(text: str):
+    """cgroup v2 'cpu.max' -> vCPUs (None = unlimited). '10000 100000' -> 0.1"""
+    parts = text.split()
+    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit() and int(parts[1]) > 0:
+        return int(parts[0]) / int(parts[1])
+    return None
+
+
+def cpu_limit():
+    """vCPUs the container may use (env CPU_LIMIT wins), or None when unknown/unlimited."""
+    env = os.environ.get("CPU_LIMIT", "").strip()
+    try:
+        if env and float(env) > 0:
+            return float(env)
+    except ValueError:
+        pass
+    try:
+        with open("/sys/fs/cgroup/cpu.max") as f:
+            return _parse_cpu_max(f.read())
+    except OSError:
+        pass
+    try:  # cgroup v1
+        with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as f:
+            quota = int(f.read().strip())
+        with open("/sys/fs/cgroup/cpu/cpu.cfs_period_us") as f:
+            period = int(f.read().strip())
+        return quota / period if quota > 0 and period > 0 else None
+    except (OSError, ValueError):
+        return None
+
+
+def cpu_info() -> dict:
+    """What `/` shows: vCPU limit and how much the kernel has throttled us (CPU-bound proof)."""
+    info = {"limit_vcpus": cpu_limit()}
+    try:
+        with open("/sys/fs/cgroup/cpu.stat") as f:
+            st = dict(line.split() for line in f if len(line.split()) == 2)
+        info["throttled_periods"] = int(st.get("nr_throttled", 0))
+        info["throttled_seconds"] = round(int(st.get("throttled_usec", 0)) / 1e6, 1)
+    except (OSError, ValueError):
+        pass
+    try:
+        if _proc is not None:
+            info["process_cpu_percent"] = _proc.cpu_percent(interval=None)
+    except Exception:
+        pass
+    return info

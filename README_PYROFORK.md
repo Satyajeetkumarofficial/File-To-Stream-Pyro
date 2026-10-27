@@ -23,7 +23,7 @@
 |---|---|---|
 | `PREFETCH_WINDOW` | 5 | GetFile requests in flight per bot (4-8) |
 | `MAX_PARALLEL_CLIENTS` | 4 | bots used for one stream when the server is idle |
-| `MAX_CONCURRENT_STREAMS` | auto (512 MB: 12, 1 GB: 32, bigger: 100) | open streams; extra users wait `STREAM_QUEUE_TIMEOUT`s then get 503 |
+| `MAX_CONCURRENT_STREAMS` | auto (0.1 vCPU: 4, 512 MB: 12, 1 GB: 32, bigger: 100) | open streams; extra users wait `STREAM_QUEUE_TIMEOUT`s then get 503 |
 | `MAX_STREAMS_PER_IP` | 0 (off) | per-IP parallel connections; leave off behind Cloudflare/proxy |
 | `LOG_REQUESTS` | errors | `errors` = log only status>=400, `all`, or `off` |
 | `MAX_INFLIGHT_CHUNKS` | auto (512 MB: 16, 1 GB: 48, bigger: 128) | HARD RAM budget (MB) for stream buffers; streams wait/503 when it is used up |
@@ -34,7 +34,7 @@
 | `DISK_CACHE_MB` | auto (50% of free disk, max 4096; 0 = off) | disk cache size: parts fetched once are re-served from disk (2nd user, seek back, resume) |
 | `CACHE_READAHEAD` / `CACHE_MAX_RUNS` | 16 / 3 | parts fetched ahead of the reader / parallel fill jobs per file |
 | `DISK_CACHE_DIR` | /tmp/filecache | where the sparse cache files live |
-| `MAX_CLIENTS` | auto (512 MB: 3, 1 GB: 5, bigger: unlimited) | max bots (main + MULTI_TOKEN*); each logged-in bot costs RAM |
+| `MAX_CLIENTS` | 0 (= use ALL MULTI_TOKEN bots) | cap on bots (main + MULTI_TOKEN*) |
 | `MEM_SHED_PERCENT` | 85 | above this % of the RAM limit new streams get 503 instead of an OOM kill |
 | `MEMORY_LIMIT_MB` | auto | override the detected container RAM limit |
 | `STALL_TIMEOUT` | 45 | abort a stream that gets no data from Telegram for this long |
@@ -64,3 +64,9 @@ Files up to ~90% of `DISK_CACHE_MB` are cached part by part. Benefits: a second 
 resume is served from local disk with **zero** Telegram calls, and several readers of one file share the same Telegram
 fetch. It does NOT make the very first download of a file faster (that is limited by Telegram, bots and the host).
 Bigger files stream directly as before. `/` shows cache stats. Set `DISK_CACHE_MB=0` to switch it off.
+
+## Speed reality check (CPU)
+Every chunk must be decrypted and relayed by Python, which is CPU work. A **0.1 vCPU** instance (Koyeb free) tops out at
+roughly 5-10 MB/s in total, however many bots you add; extra bots only help once the CPU is not the limit.
+`/` shows `cpu.limit_vcpus` and `cpu.throttled_seconds` (grows while you download = CPU-bound). On such hosts the
+defaults use 4 streams and no disk cache; on a bigger instance everything scales up automatically.

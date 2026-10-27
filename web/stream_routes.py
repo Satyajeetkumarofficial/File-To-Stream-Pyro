@@ -115,6 +115,7 @@ async def root_route_handler(_):
         "waiting": _waiting,
         "served_mb": round(STATS["bytes"] / 1048576, 1),
         "cache": diskcache.info(),
+        "cpu": memguard.cpu_info(),
         "memory_mb": round(memguard.rss_mb()),
         "memory_limit_mb": memguard.limit_mb(),
         "errors": STATS["errors"],

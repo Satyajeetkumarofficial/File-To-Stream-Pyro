@@ -159,7 +159,7 @@ async def _fill(entry: _Entry, a: int, b: int):
 def _schedule(entry: _Entry, start: int, end: int):
     """Start fill runs for the missing, not yet pending parts of [start, end)."""
     p = start
-    while p < end and entry.runs < CACHE_MAX_RUNS:
+    while p < end and entry.runs < max(CACHE_MAX_RUNS, 2 * entry.refs):
         if entry.have[p] or p in entry.pending:
             p += 1
             continue
