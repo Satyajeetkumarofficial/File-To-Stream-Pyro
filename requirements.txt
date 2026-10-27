@@ -1,0 +1,15 @@
+# Default: Pyrofork (imports as `pyrogram`) + TgCrypto (C crypto) + uvloop
+pyrofork
+tgcrypto
+uvloop; sys_platform != "win32"
+aiohttp>=3.9,<4
+python-dotenv<=0.20.0
+motor
+aiofiles
+dnspython
+apscheduler
+requests
+psutil
+jinja2
+pytz
+shortzy

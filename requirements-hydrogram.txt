@@ -1,0 +1,15 @@
+# Alternative: Hydrogram (imports as `hydrogram`, aliased automatically) + TgCrypto + uvloop
+hydrogram
+tgcrypto
+uvloop; sys_platform != "win32"
+aiohttp>=3.9,<4
+python-dotenv<=0.20.0
+motor
+aiofiles
+dnspython
+apscheduler
+requests
+psutil
+jinja2
+pytz
+shortzy
