@@ -17,17 +17,8 @@ for mod in ["aiohttp", "pyrogram", "aiohttp.web"]:
 
 def _stored_session():
     """Login saved in MongoDB by session_store (sync read, once, at import time)."""
-    try:
-        from pymongo import MongoClient
-        c = MongoClient(DB_URL, serverSelectionTimeoutMS=8000)
-        try:
-            doc = c[DB_NAME].bot_sessions.find_one({"_id": BOT_TOKEN.split(":")[0]})
-            return (doc or {}).get("session")
-        finally:
-            c.close()
-    except Exception as e:
-        logging.warning("stored login not available: %r", e)
-        return None
+    import session_store
+    return session_store.sync_load(BOT_TOKEN)
 
 
 class WebXBot(Client):

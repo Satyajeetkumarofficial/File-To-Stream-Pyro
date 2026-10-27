@@ -8,14 +8,38 @@ session a restart re-uses the old login and no new login is needed.
 """
 import logging
 
+import compat_pyrogram
 from database.users_db import mydb
 
 log = logging.getLogger("session")
 _col = mydb.bot_sessions
 
+# Session strings are NOT interchangeable between Telegram libraries (Pyrofork, Hydrogram, wzgram ...).
+# The library name is part of the key, so a string saved by another library is never fed to this one.
+TAG = compat_pyrogram.BACKEND.split()[0]
 
-def _key(token: str) -> str:
-    return token.split(":")[0]
+
+def key(token: str) -> str:
+    return f"{token.split(':')[0]}:{TAG}"
+
+
+_key = key
+
+
+def sync_load(token: str):
+    """Blocking read (used once at import time by the main client)."""
+    try:
+        from pymongo import MongoClient
+        from info import DB_URL, DB_NAME
+        c = MongoClient(DB_URL, serverSelectionTimeoutMS=8000)
+        try:
+            doc = c[DB_NAME].bot_sessions.find_one({"_id": key(token)})
+            return (doc or {}).get("session")
+        finally:
+            c.close()
+    except Exception as e:
+        log.warning("stored login not available: %r", e)
+        return None
 
 
 async def load(token: str):
@@ -51,3 +75,10 @@ def is_flood(exc: BaseException) -> int:
 
 BAD_SESSION = {"AuthKeyUnregistered", "AuthKeyInvalid", "AuthKeyDuplicated", "SessionRevoked",
                "SessionExpired", "Unauthorized", "UserDeactivated", "AccessTokenInvalid"}
+
+
+def unusable(exc: BaseException) -> bool:
+    """True when `exc` means the stored session string itself is broken / from another library."""
+    import struct
+    return isinstance(exc, (struct.error, ValueError, TypeError, UnicodeError)) or \
+        type(exc).__name__ in BAD_SESSION

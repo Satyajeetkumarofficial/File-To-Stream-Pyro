@@ -23,7 +23,12 @@ async def main():
     assert await S.load(tok) is None
     await S.save(tok, FakeClient())
     assert await S.load(tok) == "SESSION-STRING"
-    assert await S.load("12345:other") == "SESSION-STRING"          # keyed by bot id
+    assert await S.load("12345:other") == "SESSION-STRING"          # keyed by bot id + library tag
+    S._col.d["12345"] = {"_id": "12345", "session": "OLD-WZGRAM-FORMAT"}   # legacy untagged document
+    assert S.key(tok).endswith(":" + S.TAG) and S._col.d.get("12345")["session"] == "OLD-WZGRAM-FORMAT"
+    assert await S.load(tok) == "SESSION-STRING"                    # legacy doc is never used
+    import struct
+    assert S.unusable(struct.error("x")) and S.unusable(ValueError()) and not S.unusable(OSError())
     await S.forget(tok)
     assert await S.load(tok) is None
     assert S.is_flood(FloodWait()) == 1748 and S.is_flood(ValueError()) == 0

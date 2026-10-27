@@ -105,11 +105,17 @@ async def _login_main():
                 log.error("Telegram login FloodWait %ss - waiting it out (web server stays up)", wait)
                 await asyncio.sleep(wait + 5)
                 continue
-            if type(e).__name__ in session_store.BAD_SESSION and stored:
-                log.warning("Stored login rejected - forgetting it, using a fresh login")
+            if stored and session_store.unusable(e):
+                log.error("Stored login is unusable (%r) - deleting it and logging in fresh", e)
                 await session_store.forget(BOT_TOKEN)
                 stored = None
-                raise SystemExit("Stored login was invalid; restart once to log in fresh")
+                try:  # reset the client in-process; if that is impossible, restart cleanly
+                    from pyrogram.storage import FileStorage
+                    StreamBot.session_string = None
+                    StreamBot.storage = FileStorage(StreamBot.name, StreamBot.workdir)
+                    continue
+                except Exception:
+                    raise SystemExit("Stored login removed; restarting for a fresh login")
             raise
     raise SystemExit("Could not log in to Telegram")
 

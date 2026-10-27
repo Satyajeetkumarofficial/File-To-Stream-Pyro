@@ -38,7 +38,7 @@ async def _start_one(client_id: int, token: str) -> bool:
                 log.error("Client %s: Telegram login FloodWait %ss - will retry in the background", client_id, wait)
                 asyncio.create_task(_retry_later(client_id, token, wait))
                 return False
-            if type(e).__name__ in session_store.BAD_SESSION and stored:
+            if stored and session_store.unusable(e):
                 log.warning("Client %s: stored login rejected, logging in again", client_id)
                 await session_store.forget(token)
                 stored = None
