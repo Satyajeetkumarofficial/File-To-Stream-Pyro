@@ -74,17 +74,31 @@ async def _cached(key, loader):
     return value
 
 
-async def _check_expiry(file_id: int):
-    """Return a 410 response if the link has expired, else None."""
+async def _check_expiry(file_id: int, secure_hash: str = None):
+    """Return a 410 response if the link has expired, else None (fail-open on any problem)."""
     try:
         expiry_seconds = await _cached("link_expiry", db.get_link_expiry)
         if expiry_seconds and expiry_seconds > 0:
-            rec = await _cached(("file", file_id), lambda: db.files.find_one({"file_id": file_id}))
-            if rec and time.time() - rec.get("timestamp", 0) > expiry_seconds:
-                return web.Response(
-                    status=410,
-                    text="🚫 This link has expired.\nPlease request a new link from the bot.",
-                )
+            # Match on message id AND hash, newest first: ids from another bot / channel that
+            # share this MongoDB must never make a fresh link look old.
+            query = {"file_id": file_id}
+            if secure_hash:
+                query["hash"] = secure_hash
+            rec = await _cached(
+                ("file", file_id, secure_hash),
+                lambda: db.files.find_one(query, sort=[("timestamp", -1)]),
+            )
+            ts = (rec or {}).get("timestamp")
+            if ts:
+                age = time.time() - float(ts)
+                if age > expiry_seconds:
+                    log.info("link %s expired: age %.0fs > limit %ss", file_id, age, expiry_seconds)
+                    return web.Response(
+                        status=410,
+                        text=(f"🚫 This link has expired.\n"
+                              f"Link age: {int(age // 60)} min, allowed: {int(expiry_seconds // 60)} min.\n"
+                              f"Please request a new link from the bot."),
+                    )
     except Exception:
         log.warning("expiry check failed (ignored)", exc_info=True)
     return None
@@ -135,7 +149,7 @@ async def stream_watch_handler(request: web.Request):
         if not multi_clients:
             return web.Response(status=503, text="Bot is starting, retry in a few seconds")
         id, secure_hash = _parse_path(request)
-        expired = await _check_expiry(id)
+        expired = await _check_expiry(id, secure_hash)
         if expired:
             return expired
         return web.Response(text=await render_page(id, secure_hash), content_type="text/html")
@@ -156,7 +170,7 @@ async def stream_watch_handler(request: web.Request):
 async def stream_handler(request: web.Request):
     try:
         id, secure_hash = _parse_path(request)
-        expired = await _check_expiry(id)
+        expired = await _check_expiry(id, secure_hash)
         if expired:
             return expired
         return await media_streamer(request, id, secure_hash)
